@@ -1,0 +1,126 @@
+#!/bin/bash
+
+exists() {
+  if command -v $1 &>/dev/null
+  then
+    return 0
+  else
+    return 1
+  fi
+}
+
+install_sh="https://www.opscode.com/chef/install.sh"
+version_string="-v 12.3.0"
+
+if ! exists /usr/bin/chef-client; then
+  if exists wget; then
+    bash <(wget ${install_sh} -O -) ${version_string}
+  elif exists curl; then
+    bash <(curl -L ${install_sh}) ${version_string}
+  else
+    echo "Neither wget nor curl found. Please install one and try again." >&2
+    exit 1
+  fi
+
+  II_URI="http://169.254.169.254/latest/dynamic/instance-identity/document"
+  REGION=$(curl --retry 3 --retry-delay 0 --silent --fail $II_URI | grep region | awk -F\" '{print $4}')
+  export AWS_DEFAULT_REGION=$REGION
+
+  mkdir /etc/chef
+  mkdir -p ~/.chef/trusted_certs
+
+  aws s3 cp s3://uk.co.mysysadmin.chef-credentials/mysysadmin-validator.pem /etc/chef/mysysadmin-validator.pem
+  chmod 0600 /etc/chef/mysysadmin-validator.pem
+
+  aws s3 cp s3://uk.co.mysysadmin.chef-credentials/encrypted_data_bag_secret /etc/chef/encrypted_data_bag_secret
+  chmod 0600 /etc/chef/encrypted_data_bag_secret
+
+  aws s3 cp s3://uk.co.mysysadmin.chef-credentials/chef.mysysadmin.co.uk.crt /etc/chef/chef.mysysadmin.co.uk.crt
+
+  echo "%%CHEF_ENVIRONMENT%%" > /etc/chef_environment
+
+  mkdir -p /etc/chef/ohai/hints
+  touch /etc/chef/ohai/hints/ec2.json
+
+  INSTANCE_ID=$(curl --retry 3 --retry-delay 0 --silent --fail $II_URI | grep instanceId | awk -F\" '{print $4}')
+  hostname $INSTANCE_ID
+
+  RDS_DB=`aws ec2 describe-tags \
+         --filter "Name=resource-type","Values=instance" \
+         --filter "Name=resource-id","Values=$INSTANCE_ID"| \
+         grep -i RDS-%%CHEF_ENVIRONMENT%%-DRUPAL.*rds.amazonaws.com|cut -d '"' -f 4`
+  echo $RDS_DB > /etc/chef/RDS_DB
+
+  EC_CLUSTER=`aws ec2 describe-tags \
+         --filter "Name=resource-type","Values=instance" \
+         --filter "Name=resource-id","Values=$INSTANCE_ID"| \
+         grep -i EC-%%CHEF_ENVIRONMENT%%-DRUPAL.*cache.amazonaws.com|cut -d '"' -f 4`
+  echo $EC_CLUSTER > /etc/chef/EC_CLUSTER
+
+  CHEF_SERVER=`aws ec2 describe-instances \
+	  --filter "Name=tag-value","Values=Chef_Server"| \
+	  grep PrivateIpAddress|awk -F\" '{ print $4 }'|grep -v ^$|sort|uniq`
+
+  cat >> /etc/hosts <<EOF
+$CHEF_SERVER	chef.mysysadmin.co.uk
+EOF
+
+  cat > /etc/chef/client.rb <<EOF
+log_level        :auto
+log_location     STDOUT
+chef_server_url  "https://chef.mysysadmin.co.uk/organizations/mysysadmin"
+validation_client_name "mysysadmin-validator"
+validation_key "/etc/chef/mysysadmin-validator.pem"
+encrypted_data_bag_secret "/etc/chef/encrypted_data_bag_secret"
+ssl_ca_file "/etc/chef/chef.mysysadmin.co.uk.crt"
+node_name "$INSTANCE_ID"
+EOF
+
+  cat > /etc/init.d/chef-registration << EOF
+#! /bin/bash
+### BEGIN INIT INFO
+# Provides: chef-registration
+# Required-Start: \$network \$syslog
+# Required-Stop: \$network
+# Default-Start: 1 2 3 4 5
+# Default-Stop: 0
+# Short-Description: cleanup
+# Description: Remove node and client from chef on terminate.  Runs on shutdown
+### END INIT INFO
+#
+
+start() {
+  aws s3 --region $REGION cp s3://uk.co.mysysadmin.chef-credentials/mysysadmin-validator.pem /etc/chef/mysysadmin-validator.pem
+  chmod 0600 /etc/chef/mysysadmin-validator.pem
+  echo "Setting up Chef registration for $INSTANCE_ID" >> /var/log/messages
+
+  /usr/bin/chef-client -l info -j /etc/chef/first-boot.json -E `cat /etc/chef_environment`
+  touch /var/lock/subsys/chef-registration
+}
+
+stop() {
+  echo "Cleaning up Chef registration for $INSTANCE_ID" >> /var/log/messages
+  /usr/bin/knife node delete -y -c /etc/chef/client.rb $INSTANCE_ID
+  /usr/bin/knife client delete -y -c /etc/chef/client.rb $INSTANCE_ID
+  rm -f /etc/chef/client.pem
+  rm -f /var/lock/subsys/chef-registration
+}
+
+# See how we were called.
+case "\$1" in
+  start)
+        start
+	;;
+  stop)
+       	stop
+	;;
+  *)
+        echo $'Usage: $0 {start|stop}'
+        exit 2
+esac
+EOF
+
+  chmod u+x /etc/init.d/chef-registration
+  chkconfig --add chef-registration
+
+#The if block is not closed here as the script that combines parts will close it when everthing has been appended

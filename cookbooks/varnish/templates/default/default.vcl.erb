@@ -1,0 +1,209 @@
+include "/etc/varnish/backends.vcl";
+include "/etc/varnish/access.vcl";
+
+acl forbidden {
+  "100.10.20.30"/32;
+}
+
+# Respond to incoming requests.
+sub vcl_recv {
+
+  # Do not cache AB testing URLs
+  if (req.url ~ "^/\?pid="||
+      req.url ~ "^/pricing/\?bpt=p2") {
+  return (pass);
+  }
+
+  # Do not cache search results
+  if (req.url ~ "^/search/.*$") {
+       return(pass);
+  }
+
+  # Do not cache these paths and send them to the Drupal master
+  if (req.url ~ "^/status\.php$"||
+      req.url ~ "^/update\.php$"||
+      req.url ~ "^/admin\.php$"||
+      req.url ~ "^/admin$"||
+      req.url ~ "^/admin/.*$"||
+      req.url ~ "^/flag/.*$"||
+      req.url ~ "^.*/ajax/.*$"||
+      req.url ~ "^.*/ahah/.*$"||
+      req.url ~ "^/node/.*$"||
+      req.request == "POST") {
+       return(pass);
+  }
+
+  # Do not cache static developer pages
+  if (req.url ~ "^/developer/latest/.*\.html$") {
+       return(pass);
+  }
+
+  set req.backend = default_director;
+
+  if (client.ip ~ forbidden) {
+    error 403 "Forbidden";
+  }
+
+  # Use anonymous, cached pages if all backends are down.
+  if(!req.backend.healthy) {
+    unset req.http.Cookie;
+  }
+
+  # Get rid of progress.js query params
+  if (req.url ~ "^/misc/progress\.js\?[0-9]+$") {
+    set req.url = "/misc/progress.js";
+  }
+
+  # Pipe these paths directly to Apache for streaming.
+  if (req.url ~ "^/admin/content/backup_migrate/export") {
+    return (pipe);
+  }
+
+  # Allow the backend to serve up stale content if it is responding slowly.
+  set req.grace = 6h;
+
+  # Disallow outside access to cron.php or install.php
+  if (req.url ~ "^/(cron|install)\.php$" && !client.ip ~ trusted) {
+    # Either let Varnish throw the error directly,
+    #error 404 "Page not found.";
+    # Or, use a custom error page that you've defined in Drupal at the path "404".
+    set req.url = "/404";
+  }
+
+  # Always cache the following file types for all users. This list of extensions
+  # appears twice, once here and again in vcl_fetch so make sure you edit both
+  # and keep them equal.
+  if(req.url ~ "(?i)\.(pdf|asc|dat|txt|doc|xls|ppt|tgz|csv|png|gif|jpeg|jpg|ico|swf|css|js|svg)(\?[a-z0-9]+)?$") {
+    unset req.http.Cookie;
+  }
+
+  # Remove all cookies that Drupal doesn't need to know about. We explicitly
+  # list the ones that Drupal does need, the SESS and NO_CACHE. If, after
+  # running this code we find that either of these two cookies remains, we
+  # will pass as the page cannot be cached.
+#  if (req.http.Cookie) {
+  if(req.request == "GET") {
+    # 1. Append a semi-colon to the front of the cookie string.
+    # 2. Remove all spaces that appear after semi-colons.
+    # 3. Match the cookies we want to keep, adding the space we removed
+    #    previously back. (\1) is first matching group in the regsuball.
+    # 4. Remove all other cookies, identifying them by the fact that they have
+    #    no space after the preceding semi-colon.
+    # 5. Remove all spaces and semi-colons from the beginning and end of the
+    #    cookie string.
+    set req.http.Cookie = ";" + req.http.Cookie;
+    set req.http.Cookie = regsuball(req.http.Cookie, "; +", ";");
+    set req.http.Cookie = regsuball(req.http.Cookie, ";(S{1,2}ESS[a-z0-9]+|NO_CACHE)=", "; \1=");
+    set req.http.Cookie = regsuball(req.http.Cookie, ";[^ ][^;]*", "");
+    set req.http.Cookie = regsuball(req.http.Cookie, "^[; ]+|[; ]+$", "");
+
+    # Remove the "has_js" cookie
+    set req.http.Cookie = regsuball(req.http.Cookie, "has_js=[^;]+(; )?", "");
+    # Remove the "Drupal.toolbar.collapsed" cookie
+    set req.http.Cookie = regsuball(req.http.Cookie, "Drupal.toolbar.collapsed=[^;]+(; )?", "");
+    # Remove any Google Analytics based cookies
+    set req.http.Cookie = regsuball(req.http.Cookie, "__utm.=[^;]+(; )?", "");
+    # Remove the Quant Capital cookies (added by some plugin, all __qca)
+    set req.http.Cookie = regsuball(req.http.Cookie, "__qc.=[^;]+(; )?", "");
+
+    # Remove has_js and Google Analytics __* cookies.
+    set req.http.Cookie = regsuball(req.http.Cookie, "(^|;\s*)(__[a-z]+|has_js)=[^;]*", "");
+    # Remove Marketo cookies
+    set req.http.Cookie = regsuball(req.http.Cookie, "(^|;\s*)(_vis_opt_[^=]+|_mkto_trk|is_returning)=[^;]*", "");
+    set req.http.Cookie = regsuball(req.http.Cookie, "(^|;\s*)(_BP_[^=]+)=[^;]*", "");
+    # Remove Optimizely Cookies
+    set req.http.Cookie = regsuball(req.http.Cookie, "(^|;\s*)(optimizely[^=]+|end_user_id)=[^;]*", "");
+    # Remove KISSmetrics Cookies
+    set req.http.Cookie = regsuball(req.http.Cookie, "(^|;\s*)(km_[^=]+|kvcd)=[^;]*", "");
+    # Remove Pingdom Real User Monitoring Cookies
+    set req.http.Cookie = regsuball(req.http.Cookie, "(^|;\s*)(PRUM_EPISODES)=[^;]*", "");
+    # Remove MixPanel PHP API Cookies
+    set req.http.Cookie = regsuball(req.http.Cookie, "(^|;\s*)(mp_ee[^=]+)=[^;]*", "");
+    # Remove Bizo Cookies
+    set req.http.Cookie = regsuball(req.http.Cookie, "(^|;\s*)(_bizo[^=]+)=[^;]*", "");
+
+    if (req.http.Cookie == "") {
+      # If there are no remaining cookies, remove the cookie header. If there
+      # aren't any cookie headers, Varnish's default behavior will be to cache
+      # the page.
+      unset req.http.Cookie;
+    }
+    else {
+      # If there is any cookies left (a session or NO_CACHE cookie), do not
+      # cache the page. Pass it on to Apache directly.
+      return (pass);
+    }
+  }
+
+  if(req.http.Content-Type ~ "text/html"){
+    if(req.http.X-Country-Code == "GB"){
+      set req.url = regsub(req.url, "^", "/en");
+    }
+  }
+
+  # Check the incoming request type is "PURGE", not "GET" or "POST"
+  if (req.request == "PURGE") {
+    # Check if the ip coresponds with the acl trusted
+    if (!client.ip ~ trusted) {
+    # Return error code 405 (Forbidden) when not
+      error 405 "Not allowed.";
+    }
+    return (lookup);
+  }
+}
+
+# Set a header to track a cache HIT/MISS.
+sub vcl_deliver {
+  if(obj.hits > 0) {
+    set resp.http.X-Varnish-Cache = "HIT";
+  }
+  else{
+    set resp.http.X-Varnish-Cache = "MISS";
+  }
+}
+
+sub vcl_fetch {
+
+#  # Set ttl
+#  set beresp.ttl = 1h;
+
+  # Allow items to be stale if needed.
+  set beresp.grace = 6h;
+
+  # Don't allow static files to set cookies.
+  # (?i) denotes case insensitive in PCRE (perl compatible regular expressions).
+  # This list of extensions appears twice, once here and again in vcl_recv so
+  # make sure you edit both and keep them equal.
+  if(req.url ~ "(?i)\.(pdf|asc|dat|txt|doc|xls|ppt|tgz|csv|png|gif|jpeg|jpg|ico|swf|css|js|svg)(\?[a-z0-9]+)?$") {
+    unset beresp.http.set-cookie;
+  }
+
+  set beresp.http.X-Varnish-Name = "";
+  set beresp.http.X-Varnish-Cookie-Debug = "Cleaned request cookie: " + req.http.Cookie;
+
+}
+
+sub vcl_hash {
+  if (req.http.Cookie) {
+    hash_data(req.http.Cookie);
+  }
+  if (req.http.X-Forwarded-Proto) {
+    hash_data(req.http.X-Forwarded-Proto);
+  }
+  if (req.http.X-Country-Code) {
+    hash_data(req.http.X-Country-Code);
+  }
+}
+
+sub vcl_hit {
+  if (req.request == "PURGE") {
+    purge;
+    error 200 "Purged.";
+  }
+}
+sub vcl_miss {
+  if (req.request == "PURGE") {
+    purge;
+    error 200 "Purged.";
+  }
+  }

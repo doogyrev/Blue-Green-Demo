@@ -1,0 +1,5 @@
+#cloud-config
+repo_upgrade: security
+runcmd:
+  - if [ `needs-restarting|wc -l` != 0 ]; then echo "Rebooting due to security updates"; shutdown -r now;fi
+

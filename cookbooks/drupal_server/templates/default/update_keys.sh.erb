@@ -1,0 +1,25 @@
+#!/bin/bash
+TMP_AUTHORIZED_KEYS='/tmp/tmp_authorized_keys'
+AUTHORIZED_KEYS='/root/.ssh/authorized_keys'
+DOWNLOADED_KEY='/tmp/drupal_master_pub_key'
+REGION='eu-central-1'
+HOSTNAME=$(curl -s http://169.254.169.254/latest/meta-data/instance-id)
+STACK=`cat /etc/chef_environment|awk '{print toupper($0)}'`
+ID=`aws autoscaling describe-auto-scaling-groups --region $REGION \
+	--auto-scaling-group-names AS-$STACK-DRUPAL-MASTER| \
+        grep InstanceId|cut -d '"' -f 4`
+IP=`aws ec2 describe-instances --region $REGION \
+	--instance-ids $ID|grep '"PrivateIpAddress"'| \
+	cut -d '"' -f 4|sort|uniq`
+
+if grep -q "root@$ID" $AUTHORIZED_KEYS; then
+  exit
+else
+  aws s3 --region $REGION cp s3://uk.co.mysysadmin.chef-credentials/<%= node['drupal_server']['stack'] %>-drupal_master_pub_key $DOWNLOADED_KEY
+  grep -v root@$ID $AUTHORIZED_KEYS  > $TMP_AUTHORIZED_KEYS
+  echo -n "from=\"$IP\",command=\"/usr/local/sbin/validate-rsync\" " >> $TMP_AUTHORIZED_KEYS
+  cat $DOWNLOADED_KEY >> $TMP_AUTHORIZED_KEYS
+
+  mv -f $TMP_AUTHORIZED_KEYS $AUTHORIZED_KEYS
+
+fi

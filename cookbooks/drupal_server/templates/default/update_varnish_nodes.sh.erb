@@ -1,0 +1,31 @@
+#!/bin/bash
+FILE_CURRENT_IDS='/tmp/varnish_current_ids'
+FILE_OLD_IDS='/tmp/varnish_old_ids'
+REGION='eu-central-1'
+STACK=`cat /etc/chef_environment|awk '{print toupper($0)}'`
+IDS=(`aws autoscaling describe-auto-scaling-groups --region $REGION \
+	--auto-scaling-group-names AS-$STACK-VARNISH| \
+	grep InstanceId|cut -d '"' -f 4`)
+IPS=(`for id in ${IDS[@]};do aws ec2 describe-instances --region $REGION \
+	--instance-ids $id|grep '"PrivateIpAddress"'| \
+	cut -d '"' -f 4|sort|uniq;done`)
+#IPS=(`echo $IPS <%= node['varnish']['us_proxy'] %>`)
+formatted_ips=`printf "'%s', " "${IPS[@]}" | cut -d "," -f 1-${#IPS[@]}`
+
+if [ ! -f $FILE_OLD_IDS ]; then
+    touch $FILE_OLD_IDS
+fi
+
+echo ${IDS[@]} > $FILE_CURRENT_IDS
+
+DIFF=`diff $FILE_CURRENT_IDS $FILE_OLD_IDS | wc -l`
+
+if [ $DIFF -gt 0 ]; then
+	cd /var/www/html/livesite/ && \
+	sed -i "s/^.*reverse_proxy_addresses.*$/\$conf[\'reverse_proxy_addresses\'] = array($formatted_ips);/" <%= node['drupal_server']['webroot'] %>/<%= node['drupal_server']['install_dir'] %>/sites/default/settings.php && \
+	/usr/bin/drush vset varnish_control_terminal "`echo ${IPS[@]/%/:6082}`" && \
+	php -r "print json_encode(array($formatted_ips));"| \
+	/usr/bin/drush vset --format=json reverse_proxy_addresses - && \
+	/usr/bin/drush cc all
+	mv -f $FILE_CURRENT_IDS $FILE_OLD_IDS
+fi

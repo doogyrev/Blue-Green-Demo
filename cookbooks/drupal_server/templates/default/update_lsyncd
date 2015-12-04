@@ -1,0 +1,1 @@
+* * * * * root /root/cron/update_lsyncd.sh > /dev/null 2>&1

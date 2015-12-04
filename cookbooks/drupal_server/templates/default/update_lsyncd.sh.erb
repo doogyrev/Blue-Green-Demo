@@ -1,0 +1,86 @@
+#!/bin/bash
+FILE_CURRENT_IDS='/tmp/slave_current_ids'
+FILE_OLD_IDS='/tmp/slave_old_ids'
+TMP_LSYNCD_CONF='/tmp/tmp_lsyncd.conf'
+LSYNCD_CONF='/etc/lsyncd.conf'
+REGION='eu-central-1'
+HOSTNAME=$(curl -s http://169.254.169.254/latest/meta-data/instance-id)
+STACK=`cat /etc/chef_environment|awk '{print toupper($0)}'`
+MASTER_IDS=`aws autoscaling describe-auto-scaling-groups --region $REGION \
+	--auto-scaling-group-names AS-$STACK-DRUPAL-MASTER|grep -v $HOSTNAME| \
+        grep InstanceId|cut -d '"' -f 4`
+SLAVE_IDS=`aws autoscaling describe-auto-scaling-groups --region $REGION \
+	--auto-scaling-group-names AS-$STACK-DRUPAL-SLAVE|grep InstanceId| \
+	cut -d '"' -f 4`
+IDS=`echo $MASTER_IDS $SLAVE_IDS`
+IPS=`for id in $IDS;do aws ec2 describe-instances --region $REGION \
+	--instance-ids $id|grep '"PrivateIpAddress"'| \
+	cut -d '"' -f 4|sort|uniq;done`
+
+if [ ! -f $FILE_OLD_IDS ]; then
+    touch $FILE_OLD_IDS
+fi
+
+echo ${IDS[@]} > $FILE_CURRENT_IDS
+
+DIFF=`diff $FILE_CURRENT_IDS $FILE_OLD_IDS | wc -l`
+
+if [ $DIFF -gt 0 ]; then
+
+    cat <<EOF > $TMP_LSYNCD_CONF
+settings {
+   logfile = "/var/log/lsyncd/lsyncd.log",
+   statusFile = "/var/log/lsyncd/lsyncd-status",
+   statusInterval = 20
+}
+EOF
+
+    for i in ${IPS[@]}; do
+        IP=$i
+        cat <<EOF >> $TMP_LSYNCD_CONF
+sync {
+    default.rsync,
+    source="/var/www/html/",
+    target="$IP:/var/www/html/",
+    rsync = {
+        compress = true,
+        archive = true,
+        verbose = true,
+        rsh = "/usr/bin/ssh -p 22 -l root -i /root/.ssh/id_rsa -o StrictHostKeyChecking=no"
+    }
+}
+sync {
+    default.rsync,
+    source="/etc/httpd/",
+    target="$IP:/etc/httpd/",
+    rsync = {
+        compress = true,
+        archive = true,
+        verbose = true,
+        rsh = "/usr/bin/ssh -p 22 -l root -i /root/.ssh/id_rsa -o StrictHostKeyChecking=no"
+    }
+}
+sync {
+    default.rsync,
+    source="/etc/php.d/",
+    target="$IP:/etc/php.d/",
+    rsync = {
+        compress = true,
+        archive = true,
+        verbose = true,
+        rsh = "/usr/bin/ssh -p 22 -l root -i /root/.ssh/id_rsa -o StrictHostKeyChecking=no"
+    }
+}
+EOF
+    done
+    mv -f $TMP_LSYNCD_CONF $LSYNCD_CONF
+    mv -f $FILE_CURRENT_IDS $FILE_OLD_IDS
+fi
+
+# Start Lsyncd if necessary, else reload
+LSYNCD_STATUS=`/etc/init.d/lsyncd status|grep running|wc -l`
+if [ $LSYNCD_STATUS -eq 0 ]; then
+    /etc/init.d/lsyncd start;
+    else
+   /etc/init.d/lsyncd reload
+fi

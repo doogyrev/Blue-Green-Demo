@@ -1,0 +1,3 @@
+cat > /etc/chef/first-boot.json <<'EOP'
+{"run_list":["recipe[drupal_server::slave]"]}
+EOP

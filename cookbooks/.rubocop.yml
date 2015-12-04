@@ -1,0 +1,11 @@
+AllCops:
+  Exclude:
+    - 'files/**/*'
+    - 'templates/**/*'
+
+Style/FileName:
+  Enabled: false
+Metrics/LineLength:
+  Enabled: false
+HashSyntax:
+  Enabled: false

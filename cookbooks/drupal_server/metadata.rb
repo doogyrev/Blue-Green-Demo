@@ -1,0 +1,13 @@
+name 'drupal_server'
+maintainer 'MySysAdmin Ltd'
+maintainer_email 'david@mysysadmin.co.uk'
+license 'All rights reserved'
+description 'Installs/Configures drupal_server'
+long_description IO.read(File.join(File.dirname(__FILE__), 'README.md'))
+version '0.2.2'
+# depends 'apache2'
+depends 'database'
+depends 'drush'
+depends 'mysql', '>= 6.0'
+depends 'mysql2_chef_gem', '~> 1.0'
+depends 'newrelic'

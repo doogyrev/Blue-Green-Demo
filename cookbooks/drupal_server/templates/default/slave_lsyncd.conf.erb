@@ -1,0 +1,33 @@
+settings {
+   logfile = "/var/log/lsyncd/lsyncd.log",
+   statusFile = "/var/log/lsyncd/lsyncd-status",
+   statusInterval = 20
+}
+restart_httpd = {
+        maxProcesses = 1,
+        delay        = 60,
+        onCreate     = 'service httpd restart',
+        onModify     = 'service httpd restart',
+}
+restart_newrelic = {
+        maxProcesses = 1,
+        delay        = 60,
+        onCreate     = 'service newrelic-daemon restart',
+        onModify     = 'service newrelic-daemon restart',
+}
+sync {
+        delay        = 60,
+        restart_httpd,
+        source = '/var/www/html/'
+}
+sync {
+        delay        = 60,
+        restart_httpd,
+        source = '/etc/httpd/conf.d/'
+}
+sync {
+        delay        = 60,
+        restart_newrelic,
+        restart_httpd,
+        source = "/etc/php.d/"
+}
