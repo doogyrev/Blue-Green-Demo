@@ -1,0 +1,292 @@
+---
+- name: "Provision Blue/Green/Mgmt VPC"
+  local_action:
+        module: ec2_vpc
+        state: present
+        cidr_block: 10.100.0.0/16
+        resource_tags: '{"Name":"{{ vpc_name }}"}'
+        subnets:
+                - cidr: 10.100.0.0/27
+                  az: "{{ az_a }}"
+                  resource_tags: '{"Name":"MGMT_PUB_a"}'
+                - cidr: 10.100.0.32/27
+                  az: "{{ az_b }}"
+                  resource_tags: '{"Name":"MGMT_PUB_b"}'
+                - cidr: 10.100.1.0/27
+                  az: "{{ az_a }}"
+                  resource_tags: '{"Name":"MGMT_PRIV_a","network":"private"}'
+                - cidr: 10.100.1.32/27
+                  az: "{{ az_b }}"
+                  resource_tags: '{"Name":"MGMT_PRIV_b","network":"private"}'
+                - cidr: 10.100.2.0/27
+                  az: "{{ az_a }}"
+                  resource_tags: '{"Name":"MGMT_PERSIST_a"}'
+                - cidr: 10.100.2.32/27
+                  az: "{{ az_b }}"
+                  resource_tags: '{"Name":"MGMT_PERSIST_b"}'
+                - cidr: 10.100.10.0/27
+                  az: "{{ az_a }}"
+                  resource_tags: '{"Name":"BLUE_PUB_a"}'
+                - cidr: 10.100.10.32/27
+                  az: "{{ az_b }}"
+                  resource_tags: '{"Name":"BLUE_PUB_b"}'
+                - cidr: 10.100.11.0/27
+                  az: "{{ az_a }}"
+                  resource_tags: '{"Name":"BLUE_PRIV_a","network":"private"}'
+                - cidr: 10.100.11.32/27
+                  az: "{{ az_b }}"
+                  resource_tags: '{"Name":"BLUE_PRIV_b","network":"private"}'
+                - cidr: 10.100.12.0/27
+                  az: "{{ az_a }}"
+                  resource_tags: '{"Name":"BLUE_PERSIST_a"}'
+                - cidr: 10.100.12.32/27
+                  az: "{{ az_b }}"
+                  resource_tags: '{"Name":"BLUE_PERSIST_b"}'
+                - cidr: 10.100.20.0/27
+                  az: "{{ az_a }}"
+                  resource_tags: '{"Name":"GREEN_PUB_a"}'
+                - cidr: 10.100.20.32/27
+                  az: "{{ az_b }}"
+                  resource_tags: '{"Name":"GREEN_PUB_b"}'
+                - cidr: 10.100.21.0/27
+                  az: "{{ az_a }}"
+                  resource_tags: '{"Name":"GREEN_PRIV_a","network":"private"}'
+                - cidr: 10.100.21.32/27
+                  az: "{{ az_b }}"
+                  resource_tags: '{"Name":"GREEN_PRIV_b","network":"private"}'
+                - cidr: 10.100.22.0/27
+                  az: "{{ az_a }}"
+                  resource_tags: '{"Name":"GREEN_PERSIST_a"}'
+                - cidr: 10.100.22.32/27
+                  az: "{{ az_b }}"
+                  resource_tags: '{"Name":"GREEN_PERSIST_b"}'
+        internet_gateway: True
+        route_tables:
+                - subnets:
+                        - 10.100.0.0/27
+                        - 10.100.0.32/27
+                        - 10.100.10.0/27
+                        - 10.100.10.32/27
+                        - 10.100.20.0/27
+                        - 10.100.20.32/27
+                  routes:
+                        - dest: 0.0.0.0/0
+                          gw: igw
+                  resource_tags: '{"Name":"PUB"}'
+                - subnets:
+                        - 10.100.1.0/27
+                        - 10.100.1.32/27
+                        - 10.100.11.0/27
+                        - 10.100.11.32/27
+                        - 10.100.21.0/27
+                        - 10.100.21.32/27
+                  resource_tags: '{"Name":"PRIV"}'
+                - subnets:
+                        - 10.100.2.0/27
+                        - 10.100.2.32/27
+                        - 10.100.12.0/27
+                        - 10.100.12.32/27
+                        - 10.100.22.0/27
+                        - 10.100.22.32/27
+                  resource_tags: '{"Name":"PERSIST"}'
+        region: "{{ aws_region }}"
+        wait: yes
+  register: vpc
+
+- name: write vpc id to vpc_info.yml file
+  local_action: shell echo "{{ env }}"_vpc":" "{{ vpc.vpc_id }}"
+                      > vars/"{{ env }}"/vpc_info.yml
+- name: write subnets id to {{ prefix }}_vpc_info file
+  local_action: shell echo "{{ item.resource_tags.Name }}"":" "{{ item.id }}"
+                      >> vars/"{{ env }}"/vpc_info.yml
+  with_items: vpc.subnets
+
+- name: Provision SG_SSH_Internal security group
+  local_action:
+        module: ec2_group
+        state: present
+        name: "SG_SSH_Internal"
+        description: "Allow SSH from internal hosts"
+        vpc_id: "{{ vpc.vpc_id }}"
+        region: "{{ aws_region }}"
+        rules:
+          - proto: tcp
+            from_port: 22
+            to_port: 22
+            cidr_ip: 10.100.0.0/16
+  register: SG_SSH_Internal
+
+- name: write ec2_group id to vpc_info.yml file
+  local_action: shell echo SG_SSH_Internal_id":" "{{ SG_SSH_Internal.group_id }}"
+                      >> vars/"{{ env }}"/vpc_info.yml
+
+- name: Provision SG_SSH_External security group
+  local_action:
+        module: ec2_group
+        state: present
+        name: "SG_SSH_External"
+        description: "Allow SSH from external hosts"
+        vpc_id: "{{ vpc.vpc_id }}"
+        region: "{{ aws_region }}"
+        rules:
+          - proto: tcp
+            from_port: 22
+            to_port: 22
+            cidr_ip: 217.36.106.134/32
+  register: SG_SSH_External
+
+- name: write ec2_group id to vpc_info.yml file
+  local_action: shell echo SG_SSH_External_id":" "{{ SG_SSH_External.group_id }}"
+                      >> vars/"{{ env }}"/vpc_info.yml
+
+- name: Provision SG_Postgres_Internal security group
+  local_action:
+        module: ec2_group
+        state: present
+        name: "SG_Postgres_Internal"
+        description: "Allow port 5432 from internal hosts"
+        vpc_id: "{{ vpc.vpc_id }}"
+        region: "{{ aws_region }}"
+        rules:
+          - proto: tcp
+            from_port: 5432
+            to_port: 5432
+            cidr_ip: 10.100.0.0/16
+  register: SG_Postgres_Internal
+
+- name: write ec2_group id to vpc_info.yml file
+  local_action: shell echo SG_Postgres_Internal_id":" "{{ SG_Postgres_Internal.group_id }}"
+                      >> vars/"{{ env }}"/vpc_info.yml
+
+- name: Provision SG_NAT security group
+  local_action:
+        module: ec2_group
+        state: present
+        name: "SG_NAT"
+        description: "Allow all traffic from internal hosts"
+        vpc_id: "{{ vpc.vpc_id }}"
+        region: "{{ aws_region }}"
+        rules:
+          - proto: all
+            from_port: all
+            to_port: all
+            cidr_ip: 10.100.0.0/16
+  register: SG_NAT
+
+- name: write ec2_group id to vpc_info.yml file
+  local_action: shell echo SG_NAT_id":" "{{ SG_NAT.group_id }}"
+                      >> vars/"{{ env }}"/vpc_info.yml
+
+- name: Provision SG_MySQL_Internal security group
+  local_action:
+        module: ec2_group
+        state: present
+        name: "SG_MySQL_Internal"
+        description: "Allow port 3306 from internal hosts"
+        vpc_id: "{{ vpc.vpc_id }}"
+        region: "{{ aws_region }}"
+        rules:
+          - proto: tcp
+            from_port: 3306
+            to_port: 3306
+            cidr_ip: 10.100.0.0/16
+  register: SG_MySQL_Internal
+
+- name: write ec2_group id to vpc_info.yml file
+  local_action: shell echo SG_MySQL_Internal_id":" "{{ SG_MySQL_Internal.group_id }}"
+                      >> vars/"{{ env }}"/vpc_info.yml
+
+- name: Provision SG_HTTP_External security group
+  local_action:
+        module: ec2_group
+        state: present
+        name: "SG_HTTP_External"
+        description: "Allow HTTP from external hosts"
+        vpc_id: "{{ vpc.vpc_id }}"
+        region: "{{ aws_region }}"
+        rules:
+          - proto: tcp
+            from_port: 80
+            to_port: 80
+            cidr_ip: 0.0.0.0/0
+  register: SG_HTTP_External
+
+- name: write ec2_group id to vpc_info.yml file
+  local_action: shell echo SG_HTTP_External_id":" "{{ SG_HTTP_External.group_id }}"
+                      >> vars/"{{ env }}"/vpc_info.yml
+
+- name: Provision SG_HTTP_ALT security group
+  local_action:
+        module: ec2_group
+        state: present
+        name: "SG_HTTP_ALT"
+        description: "Allow cwport 8080SSH from internal hosts"
+        vpc_id: "{{ vpc.vpc_id }}"
+        region: "{{ aws_region }}"
+        rules:
+          - proto: tcp
+            from_port: 8080
+            to_port: 8080
+            cidr_ip: 10.100.0.0/16
+  register: SG_HTTP_ALT
+
+- name: write ec2_group id to vpc_info.yml file
+  local_action: shell echo SG_HTTP_ALT_Internal_id":" "{{ SG_HTTP_ALT_Internal.group_id }}"
+                      >> vars/"{{ env }}"/vpc_info.yml
+
+- name: Provision SG_HTTPS_External security group
+  local_action:
+        module: ec2_group
+        state: present
+        name: "SG_HTTPS_External"
+        description: "Allow HTTPS from external hosts"
+        vpc_id: "{{ vpc.vpc_id }}"
+        region: "{{ aws_region }}"
+        rules:
+          - proto: tcp
+            from_port: 443
+            to_port: 443
+            cidr_ip: 0.0.0.0/0
+  register: SG_HTTPS_External
+
+- name: write ec2_group id to vpc_info.yml file
+  local_action: shell echo SG_HTTPS_External_id":" "{{ SG_HTTPS_External.group_id }}"
+                      >> vars/"{{ env }}"/vpc_info.yml
+
+- name: Provision SG_HTTPS_Internal security group
+  local_action:
+        module: ec2_group
+        state: present
+        name: "SG_HTTPS_Internal"
+        description: "Allow HTTPS from internal hosts"
+        vpc_id: "{{ vpc.vpc_id }}"
+        region: "{{ aws_region }}"
+        rules:
+          - proto: tcp
+            from_port: 443
+            to_port: 443
+            cidr_ip: 10.100.0.0/16
+  register: SG_HTTPS_Internal
+
+- name: write ec2_group id to vpc_info.yml file
+  local_action: shell echo SG_HTTPS_Internal_id":" "{{ SG_HTTPS_Internal.group_id }}"
+                      >> vars/"{{ env }}"/vpc_info.yml
+
+- name: Provision SG_HTTP_Internal security group
+  local_action:
+        module: ec2_group
+        state: present
+        name: "SG_HTTP_Internal"
+        description: "Allow HTTP from internal hosts"
+        vpc_id: "{{ vpc.vpc_id }}"
+        region: "{{ aws_region }}"
+        rules:
+          - proto: tcp
+            from_port: 80
+            to_port: 80
+            cidr_ip: 10.100.0.0/16
+  register: SG_HTTP_Internal
+
+- name: write ec2_group id to vpc_info.yml file
+  local_action: shell echo SG_HTTP_Internal_id":" "{{ SG_HTTP_Internal.group_id }}"
+                      >> vars/"{{ env }}"/vpc_info.yml

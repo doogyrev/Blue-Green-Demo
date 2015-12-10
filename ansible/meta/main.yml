@@ -1,0 +1,12 @@
+---
+playbook_info:
+  author: David Goodall (MySysAdmin Ltd)
+  description: Blue/Green VPC Ansible playbook
+  license:
+  min_ansible_version: 1.8
+  platforms:
+  - name: Amazon Linux
+    versions:
+  categories:
+    - cloud
+dependencies: []

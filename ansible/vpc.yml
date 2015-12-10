@@ -1,0 +1,12 @@
+---
+- vars:
+      env: live
+  vars_files:
+     - ["vars/{{env}}/main.yml"]
+     - ["vars/{{env}}/vpc_info.yml"]
+  hosts: local
+  connection: local
+  gather_facts: False
+  tags: AWS provisioning
+  roles:
+    - role: vpc
