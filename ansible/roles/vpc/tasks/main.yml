@@ -4,62 +4,62 @@
         module: ec2_vpc
         state: present
         cidr_block: 10.100.0.0/16
-        resource_tags: '{"Name":"{{ vpc_name }}"}'
+        resource_tags: { "Name":"{{ vpc_name }}" }
         subnets:
                 - cidr: 10.100.0.0/27
                   az: "{{ az_a }}"
-                  resource_tags: '{"Name":"MGMT_PUB_a"}'
+                  resource_tags: { "Name":"MGMT_PUB_a" }
                 - cidr: 10.100.0.32/27
                   az: "{{ az_b }}"
-                  resource_tags: '{"Name":"MGMT_PUB_b"}'
+                  resource_tags: { "Name":"MGMT_PUB_b" }
                 - cidr: 10.100.1.0/27
                   az: "{{ az_a }}"
-                  resource_tags: '{"Name":"MGMT_PRIV_a","network":"private"}'
+                  resource_tags: { "Name":"MGMT_PRIV_a","network":"private" }
                 - cidr: 10.100.1.32/27
                   az: "{{ az_b }}"
-                  resource_tags: '{"Name":"MGMT_PRIV_b","network":"private"}'
+                  resource_tags: { "Name":"MGMT_PRIV_b","network":"private" }
                 - cidr: 10.100.2.0/27
                   az: "{{ az_a }}"
-                  resource_tags: '{"Name":"MGMT_PERSIST_a"}'
+                  resource_tags: { "Name":"MGMT_PERSIST_a" }
                 - cidr: 10.100.2.32/27
                   az: "{{ az_b }}"
-                  resource_tags: '{"Name":"MGMT_PERSIST_b"}'
+                  resource_tags: { "Name":"MGMT_PERSIST_b" }
                 - cidr: 10.100.10.0/27
                   az: "{{ az_a }}"
-                  resource_tags: '{"Name":"BLUE_PUB_a"}'
+                  resource_tags: { "Name":"BLUE_PUB_a" }
                 - cidr: 10.100.10.32/27
                   az: "{{ az_b }}"
-                  resource_tags: '{"Name":"BLUE_PUB_b"}'
+                  resource_tags: { "Name":"BLUE_PUB_b" }
                 - cidr: 10.100.11.0/27
                   az: "{{ az_a }}"
-                  resource_tags: '{"Name":"BLUE_PRIV_a","network":"private"}'
+                  resource_tags: { "Name":"BLUE_PRIV_a","network":"private" }
                 - cidr: 10.100.11.32/27
                   az: "{{ az_b }}"
-                  resource_tags: '{"Name":"BLUE_PRIV_b","network":"private"}'
+                  resource_tags: { "Name":"BLUE_PRIV_b","network":"private" }
                 - cidr: 10.100.12.0/27
                   az: "{{ az_a }}"
-                  resource_tags: '{"Name":"BLUE_PERSIST_a"}'
+                  resource_tags: { "Name":"BLUE_PERSIST_a" }
                 - cidr: 10.100.12.32/27
                   az: "{{ az_b }}"
-                  resource_tags: '{"Name":"BLUE_PERSIST_b"}'
+                  resource_tags: { "Name":"BLUE_PERSIST_b" }
                 - cidr: 10.100.20.0/27
                   az: "{{ az_a }}"
-                  resource_tags: '{"Name":"GREEN_PUB_a"}'
+                  resource_tags: { "Name":"GREEN_PUB_a" }
                 - cidr: 10.100.20.32/27
                   az: "{{ az_b }}"
-                  resource_tags: '{"Name":"GREEN_PUB_b"}'
+                  resource_tags: { "Name":"GREEN_PUB_b" }
                 - cidr: 10.100.21.0/27
                   az: "{{ az_a }}"
-                  resource_tags: '{"Name":"GREEN_PRIV_a","network":"private"}'
+                  resource_tags: { "Name":"GREEN_PRIV_a","network":"private" }
                 - cidr: 10.100.21.32/27
                   az: "{{ az_b }}"
-                  resource_tags: '{"Name":"GREEN_PRIV_b","network":"private"}'
+                  resource_tags: { "Name":"GREEN_PRIV_b","network":"private" }
                 - cidr: 10.100.22.0/27
                   az: "{{ az_a }}"
-                  resource_tags: '{"Name":"GREEN_PERSIST_a"}'
+                  resource_tags: { "Name":"GREEN_PERSIST_a" }
                 - cidr: 10.100.22.32/27
                   az: "{{ az_b }}"
-                  resource_tags: '{"Name":"GREEN_PERSIST_b"}'
+                  resource_tags: { "Name":"GREEN_PERSIST_b" }
         internet_gateway: True
         route_tables:
                 - subnets:
@@ -72,7 +72,7 @@
                   routes:
                         - dest: 0.0.0.0/0
                           gw: igw
-                  resource_tags: '{"Name":"PUB"}'
+                  resource_tags: { "Name":"PUB" }
                 - subnets:
                         - 10.100.1.0/27
                         - 10.100.1.32/27
@@ -80,7 +80,10 @@
                         - 10.100.11.32/27
                         - 10.100.21.0/27
                         - 10.100.21.32/27
-                  resource_tags: '{"Name":"PRIV"}'
+                  routes:
+                        - dest: 0.0.0.0/0
+                          gw: igw
+                  resource_tags: { "Name":"PRIV" }
                 - subnets:
                         - 10.100.2.0/27
                         - 10.100.2.32/27
@@ -88,7 +91,10 @@
                         - 10.100.12.32/27
                         - 10.100.22.0/27
                         - 10.100.22.32/27
-                  resource_tags: '{"Name":"PERSIST"}'
+                  routes:
+                        - dest: 0.0.0.0/0
+                          gw: igw
+                  resource_tags: { "Name":"PERSIST" }
         region: "{{ aws_region }}"
         wait: yes
   register: vpc
@@ -96,10 +102,210 @@
 - name: write vpc id to vpc_info.yml file
   local_action: shell echo "{{ env }}"_vpc":" "{{ vpc.vpc_id }}"
                       > vars/"{{ env }}"/vpc_info.yml
-- name: write subnets id to {{ prefix }}_vpc_info file
+- name: write subnets id to "{{ env }}"_vpc_info file
   local_action: shell echo "{{ item.resource_tags.Name }}"":" "{{ item.id }}"
                       >> vars/"{{ env }}"/vpc_info.yml
   with_items: vpc.subnets
+
+- name: "GREEN_PUB Network ACL"
+  ec2_vpc_nacl:
+    vpc: "{{ vpc.vpc_id }}"
+    region: "{{ aws_region }}"
+    nacl: "AclGreenPub"
+    subnets: ['GREEN_PUB_a', 'GREEN_PUB_b']
+    tags:
+      Name: "GREEN_PUB"
+    ingress: [
+        # rule no, protocol, allow/deny, cidr, icmp_code, icmp_type,
+        #                                             port from, port to
+        [100, 'tcp', 'allow', '0.0.0.0/0', null, null, 80, 80],
+        [110, 'tcp', 'allow', '0.0.0.0/0', null, null, 443, 443],
+        [120, 'tcp', 'allow', '10.100.0.0/24', null, null, 22, 22],
+        [130, 'tcp', 'allow', '10.100.1.0/24', null, null, 22, 22],
+        [140, 'tcp', 'allow', '0.0.0.0/0', null, null, 1024, 65535],
+        [150, 'udp', 'allow', '0.0.0.0/0', null, null, 1024, 65535]
+    ]
+    egress: [
+        [100, 'all', 'allow', '0.0.0.0/0', null, null, null, null]
+    ]
+    state: 'present'
+
+- name: "GREEN_PRIV Network ACL"
+  ec2_vpc_nacl:
+    vpc: "{{ vpc.vpc_id }}"
+    region: "{{ aws_region }}"
+    nacl: "AclGreenPriv"
+    subnets: ['GREEN_PRIV_a', 'GREEN_PRIV_b']
+    tags:
+      Name: "GREEN_PRIV"
+    ingress: [
+        # rule no, protocol, allow/deny, cidr, icmp_code, icmp_type,
+        #                                             port from, port to
+        [100, 'all', 'allow', '10.100.20.0/24', null, null, null, null],
+        [110, 'all', 'allow', '10.100.21.0/24', null, null, null, null],
+        [120, 'all', 'allow', '10.100.0.0/24', null, null, null, null],
+        [130, 'all', 'allow', '10.100.1.0/24', null, null, null, null],
+        [140, 'tcp', 'allow', '0.0.0.0/0', null, null, 1024, 65535],
+        [150, 'udp', 'allow', '0.0.0.0/0', null, null, 1024, 65535]
+    ]
+    egress: [
+        [100, 'all', 'allow', '0.0.0.0/0', null, null, null, null]
+    ]
+    state: 'present'
+
+- name: "GREEN_PERSIST Network ACL"
+  ec2_vpc_nacl:
+    vpc: "{{ vpc.vpc_id }}"
+    region: "{{ aws_region }}"
+    nacl: "AclGreenPersist"
+    subnets: ['GREEN_PERSIST_a', 'GREEN_PERSIST_b']
+    tags:
+      Name: "GREEN_PERSIST"
+    ingress: [
+        # rule no, protocol, allow/deny, cidr, icmp_code, icmp_type,
+        #                                             port from, port to
+        [100, 'tcp', 'allow', '10.100.20.0/24', null, null, 3306, 3306],
+        [110, 'tcp', 'allow', '10.100.21.0/24', null, null, 3306, 3306],
+        [120, 'tcp', 'allow', '0.0.0.0/0', null, null, 1024, 65535],
+        [130, 'udp', 'allow', '0.0.0.0/0', null, null, 1024, 65535]
+    ]
+    egress: [
+        [100, 'all', 'allow', '0.0.0.0/0', null, null, null, null]
+    ]
+    state: 'present'
+
+- name: "BLUE_PUB Network ACL"
+  ec2_vpc_nacl:
+    vpc: "{{ vpc.vpc_id }}"
+    region: "{{ aws_region }}"
+    nacl: "AclBluePub"
+    subnets: ['BLUE_PUB_a', 'BLUE_PUB_b']
+    tags:
+      Name: "BLUE_PUB"
+    ingress: [
+        # rule no, protocol, allow/deny, cidr, icmp_code, icmp_type,
+        #                                             port from, port to
+        [100, 'tcp', 'allow', '0.0.0.0/0', null, null, 80, 80],
+        [110, 'tcp', 'allow', '0.0.0.0/0', null, null, 443, 443],
+        [120, 'tcp', 'allow', '10.100.0.0/24', null, null, 22, 22],
+        [130, 'tcp', 'allow', '10.100.1.0/24', null, null, 22, 22],
+        [140, 'tcp', 'allow', '0.0.0.0/0', null, null, 1024, 65535],
+        [150, 'udp', 'allow', '0.0.0.0/0', null, null, 1024, 65535]
+    ]
+    egress: [
+        [100, 'all', 'allow', '0.0.0.0/0', null, null, null, null]
+    ]
+    state: 'present'
+
+- name: "BLUE_PRIV Network ACL"
+  ec2_vpc_nacl:
+    vpc: "{{ vpc.vpc_id }}"
+    region: "{{ aws_region }}"
+    nacl: "AclBluePriv"
+    subnets: ['BLUE_PRIV_a', 'BLUE_PRIV_b']
+    tags:
+      Name: "BLUE_PRIV"
+    ingress: [
+        # rule no, protocol, allow/deny, cidr, icmp_code, icmp_type,
+        #                                             port from, port to
+        [100, 'all', 'allow', '10.100.10.0/24', null, null, null, null],
+        [110, 'all', 'allow', '10.100.11.0/24', null, null, null, null],
+        [120, 'all', 'allow', '10.100.0.0/24', null, null, null, null],
+        [130, 'all', 'allow', '10.100.1.0/24', null, null, null, null],
+        [140, 'tcp', 'allow', '0.0.0.0/0', null, null, 1024, 65535],
+        [150, 'udp', 'allow', '0.0.0.0/0', null, null, 1024, 65535]
+    ]
+    egress: [
+        [100, 'all', 'allow', '0.0.0.0/0', null, null, null, null]
+    ]
+    state: 'present'
+
+- name: "BLUE_PERSIST Network ACL"
+  ec2_vpc_nacl:
+    vpc: "{{ vpc.vpc_id }}"
+    region: "{{ aws_region }}"
+    nacl: "AclBluePersist"
+    subnets: ['BLUE_PERSIST_a', 'BLUE_PERSIST_b']
+    tags:
+      Name: "BLUE_PERSIST"
+    ingress: [
+        # rule no, protocol, allow/deny, cidr, icmp_code, icmp_type,
+        #                                             port from, port to
+        [100, 'tcp', 'allow', '10.100.10.0/24', null, null, 3306, 3306],
+        [110, 'tcp', 'allow', '10.100.11.0/24', null, null, 3306, 3306],
+        [120, 'tcp', 'allow', '0.0.0.0/0', null, null, 1024, 65535],
+        [130, 'udp', 'allow', '0.0.0.0/0', null, null, 1024, 65535]
+    ]
+    egress: [
+        [100, 'all', 'allow', '0.0.0.0/0', null, null, null, null]
+    ]
+    state: 'present'
+
+- name: "MGMT_PUB Network ACL"
+  ec2_vpc_nacl:
+    vpc: "{{ vpc.vpc_id }}"
+    region: "{{ aws_region }}"
+    nacl: "AclMgmtPub"
+    subnets: ['MGMT_PUB_a', 'MGMT_PUB_b']
+    tags:
+      Name: "MGMT_PUB"
+    ingress: [
+        # rule no, protocol, allow/deny, cidr, icmp_code, icmp_type,
+        #                                             port from, port to
+        [100, 'tcp', 'allow', '0.0.0.0/0', null, null, 80, 80],
+        [110, 'tcp', 'allow', '0.0.0.0/0', null, null, 443, 443],
+        [120, 'tcp', 'allow', '0.0.0.0/0', null, null, 22, 22],
+        [130, 'all', 'allow', '10.100.0.0/16', null, null, 22, 22],
+        [140, 'tcp', 'allow', '0.0.0.0/0', null, null, 1024, 65535],
+        [150, 'udp', 'allow', '0.0.0.0/0', null, null, 1024, 65535]
+    ]
+    egress: [
+        [100, 'all', 'allow', '0.0.0.0/0', null, null, null, null]
+    ]
+    state: 'present'
+
+- name: "MGMT_PRIV Network ACL"
+  ec2_vpc_nacl:
+    vpc: "{{ vpc.vpc_id }}"
+    region: "{{ aws_region }}"
+    nacl: "AclMgmtPriv"
+    subnets: ['MGMT_PRIV_a', 'MGMT_PRIV_b']
+    tags:
+      Name: "MGMT_PRIV"
+    ingress: [
+        # rule no, protocol, allow/deny, cidr, icmp_code, icmp_type,
+        #                                             port from, port to
+        [100, 'all', 'allow', '10.100.0.0/24', null, null, null, null],
+        [110, 'all', 'allow', '10.100.1.0/24', null, null, null, null],
+        [120, 'tcp', 'allow', '10.100.0.0/16', null, null, 443, 443],
+        [140, 'tcp', 'allow', '0.0.0.0/0', null, null, 1024, 65535],
+        [150, 'udp', 'allow', '0.0.0.0/0', null, null, 1024, 65535]
+    ]
+    egress: [
+        [100, 'all', 'allow', '0.0.0.0/0', null, null, null, null]
+    ]
+    state: 'present'
+
+- name: "MGMT_PERSIST Network ACL"
+  ec2_vpc_nacl:
+    vpc: "{{ vpc.vpc_id }}"
+    region: "{{ aws_region }}"
+    nacl: "AclMgmtPersist"
+    subnets: ['MGMT_PERSIST_a', 'MGMT_PERSIST_b']
+    tags:
+      Name: "MGMT_PERSIST"
+    ingress: [
+        # rule no, protocol, allow/deny, cidr, icmp_code, icmp_type,
+        #                                             port from, port to
+        [100, 'tcp', 'allow', '10.100.1.0/24', null, null, 3306, 3306],
+        [110, 'tcp', 'allow', '10.100.2.0/24', null, null, 3306, 3306],
+        [120, 'tcp', 'allow', '0.0.0.0/0', null, null, 1024, 65535],
+        [130, 'udp', 'allow', '0.0.0.0/0', null, null, 1024, 65535]
+    ]
+    egress: [
+        [100, 'all', 'allow', '0.0.0.0/0', null, null, null, null]
+    ]
+    state: 'present'
 
 - name: Provision SG_SSH_Internal security group
   local_action:
@@ -219,7 +425,7 @@
   local_action:
         module: ec2_group
         state: present
-        name: "SG_HTTP_ALT"
+        name: "SG_HTTP_ALT_Internal"
         description: "Allow cwport 8080SSH from internal hosts"
         vpc_id: "{{ vpc.vpc_id }}"
         region: "{{ aws_region }}"
@@ -228,7 +434,7 @@
             from_port: 8080
             to_port: 8080
             cidr_ip: 10.100.0.0/16
-  register: SG_HTTP_ALT
+  register: SG_HTTP_ALT_Internal
 
 - name: write ec2_group id to vpc_info.yml file
   local_action: shell echo SG_HTTP_ALT_Internal_id":" "{{ SG_HTTP_ALT_Internal.group_id }}"

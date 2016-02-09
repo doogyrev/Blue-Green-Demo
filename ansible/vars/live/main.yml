@@ -1,7 +1,7 @@
 ---
 # VPC INFO
 aws_region: eu-west-1
-aws_zone1: eu-west-1a
-aws_zone2: eu-west-1b
-security_group: ec2sec1
+az_a: eu-west-1a
+az_b: eu-west-1b
+security_group: SG_SSH_External
 vpc_name: blue-green-demo
