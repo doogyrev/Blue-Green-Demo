@@ -426,7 +426,7 @@
         module: ec2_group
         state: present
         name: "SG_HTTP_ALT_Internal"
-        description: "Allow cwport 8080SSH from internal hosts"
+        description: "Allow port 8080 from internal hosts"
         vpc_id: "{{ vpc.vpc_id }}"
         region: "{{ aws_region }}"
         rules:
